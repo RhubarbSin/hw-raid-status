@@ -1,0 +1,3 @@
+#+TITLE: Hardware RAID status monitor
+
+This script checks the status of various types of hardware RAID controllers. If it finds an appropriate executable, it attempts to check the status of the first array on the first controller.

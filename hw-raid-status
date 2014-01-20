@@ -1,0 +1,122 @@
+#!/bin/bash
+#
+# hw-raid-status: attempt to check status of hardware RAID based on
+# existence of command-line binary
+#
+# 	$Id: hw-raid-status,v 1.6 2013/10/17 13:55:55 blb Exp $	
+
+# for HP CISS Driver
+HPACUCLI=/usr/sbin/hpacucli
+
+# for Adaptec aacraid driver
+AFACLI=/usr/sbin/afacli
+
+# for Fusion MPT base driver
+MPTSTATUS=/usr/sbin/mpt-status
+
+# for 3ware 9000 Storage Controller device driver
+TWCLI=/usr/local/sbin/tw_cli
+
+# for megaraid cmm
+MEGACTL=/usr/local/sbin/megactl
+
+# for megaraid_sas
+if [ "$(/bin/uname -i)" == i386 ]; then
+    MEGACLI=/opt/MegaRAID/MegaCli/MegaCli
+else
+    MEGACLI=/opt/MegaRAID/MegaCli/MegaCli64
+fi
+
+function alert() {
+    # raise alarm by echoing output and logging to syslog
+    echo "$1"
+    echo "$1" | /usr/bin/logger -p local0.alert
+}
+
+function check_cciss() {
+    # check only slot 0
+    OUTPUT=$($HPACUCLI controller slot=0 show config)
+    if echo "$OUTPUT" | /bin/grep -iq fail; then
+        alert "$OUTPUT"
+    fi
+}
+
+function check_aacraid() {
+    # remove this directory to reset
+    DIR=/etc/afa
+    OK_CONF=afa-ok.conf
+    CUR_CONF=afa-cur.conf
+
+    if [ ! -d $DIR ]; then
+        /bin/mkdir --mode=755 $DIR
+        NEW=1
+    fi
+
+    # save current status to file
+    export TERM=dumb
+    cd $DIR && $AFACLI > $CUR_CONF <<EOF
+open afa0
+logfile start $CUR_CONF
+container list
+disk list
+logfile end 
+exit
+EOF
+
+    # delete lines containing dashes because output is inconsistent
+    /bin/sed -i -e /-/D $CUR_CONF
+    # delete binary garbage on last line
+    /bin/sed -i -e '$D' $CUR_CONF
+
+    if (( ${NEW:-0} )); then
+        # first run: save current output as exemplar of "OK"
+        /bin/mv $CUR_CONF $OK_CONF
+    elif ! /usr/bin/cmp -s $CUR_CONF $OK_CONF; then
+        # something has changed
+        OUTPUT=$(/bin/cat $CUR_CONF)
+        alert "$OUTPUT"
+    fi
+}
+
+function check_mpt() {
+    if ! OUTPUT=$($MPTSTATUS --newstyle); then
+        alert "$OUTPUT"
+    fi
+}
+
+function check_3ware() {
+    # check only the first controller
+    CONTROLLER=$($TWCLI show | /bin/sed -e '/^c[0-9]/!d;s/^\(c[0-9]\).*/\1/;q')
+    OUTPUT=$($TWCLI /${CONTROLLER} show)
+    if echo "$OUTPUT" | /bin/egrep -q '(DEGRADED|INOPERABLE|UNKNOWN)'; then
+        alert "$OUTPUT"
+    fi
+}
+
+function check_megaraid() {
+    OUTPUT=$($MEGACTL -vH)
+    if [ -n "$OUTPUT" ]; then
+        alert "$OUTPUT"
+    fi
+}
+
+function check_megaraid_sas() {
+    OUTPUT=$($MEGACLI -LDInfo -Lall -aALL -NoLog)
+    if ! echo "$OUTPUT" | /bin/egrep -q 'State *: Optimal'; then
+        alert "$OUTPUT"
+    fi
+}
+
+unset PATH
+
+[ -e $HPACUCLI ] && check_cciss
+
+[ -e $AFACLI ] && check_aacraid
+
+[ -e $MPTSTATUS ] && check_mpt
+
+[ -e $TWCLI ] && check_3ware
+
+[ -e $MEGACTL ] && check_megaraid
+
+[ -e $MEGACLI ] && check_megaraid_sas
