@@ -5,7 +5,7 @@
 #
 # 	$Id: hw-raid-status,v 1.6 2013/10/17 13:55:55 blb Exp $	
 
-# for HP CISS Driver
+# for HP CCISS Smart Array driver
 HPACUCLI=/usr/sbin/hpacucli
 
 # for Adaptec aacraid driver
@@ -17,7 +17,7 @@ MPTSTATUS=/usr/sbin/mpt-status
 # for 3ware 9000 Storage Controller device driver
 TWCLI=/usr/local/sbin/tw_cli
 
-# for megaraid cmm
+# for megaraid cmm driver
 MEGACTL=/usr/local/sbin/megactl
 
 # for megaraid_sas
